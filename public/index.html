@@ -32,19 +32,20 @@
             position: absolute; top: 45px; bottom: 120px; left: 0; right: 0;
             background: #1a1a1a; 
             overflow: hidden; 
-            padding: 5px;
-            display: flex; align-items: flex-start; justify-content: flex-start;
+            padding: 10px;
+            display: flex; align-items: center; justify-content: center;
         }
         
         .grid-relative-container {
             display: grid;
             gap: 4px;
-            width: 100%;
-            height: 100%;
+            /* Οι διαστάσεις στηλών και γραμμών ορίζονται πλέον δυναμικά από τη JS */
+            justify-content: center;
+            align-content: center;
         }
 
         .grid-slot {
-            width: 65px; height: 65px;
+            width: 100%; height: 100%;
             display: flex; align-items: center; justify-content: center;
             background-color: #181818;
             border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -223,8 +224,9 @@
         let timeLeft = 60;
         let hasValidatedAtLeastOnceThisTurn = false; 
 
-        let totalRows = 0;
-        let totalCols = 0;
+        // Σταθερό μέγεθος πλέγματος για να μην αλλάζει ο αριθμός των τετραγώνων μεταξύ των παικτών
+        const totalRows = 11;
+        const totalCols = 15;
         const symbolCycle = ['+', '-', 'x', '=', null];
 
         function preloadImages() {
@@ -233,16 +235,20 @@
             imagesToPreload.forEach(src => { const img = new Image(); img.src = src; });
         }
 
+        // Δυναμικός υπολογισμός μεγέθους ώστε να χωράει ΠΑΝΤΑ ολόκληρο το πλέγμα στην οθόνη
         function buildFullScreenGrid() {
-            const surfaceWidth = surfaceContainer.clientWidth - 10; 
-            const surfaceHeight = surfaceContainer.clientHeight - 10;
-            totalCols = Math.floor(surfaceWidth / 69);
-            totalRows = Math.floor(surfaceHeight / 69);
-            if(totalCols < 5) totalCols = 5;
-            if(totalRows < 5) totalRows = 5;
+            const surfaceWidth = surfaceContainer.clientWidth - 20; 
+            const surfaceHeight = surfaceContainer.clientHeight - 20;
 
-            container.style.gridTemplateColumns = `repeat(${totalCols}, 65px)`;
-            container.style.gridTemplateRows = `repeat(${totalRows}, 65px)`;
+            // Υπολογίζουμε πόσα pixel μπορεί να είναι το κάθε τετράγωνο για να χωράει οριζόντια και κάθετα
+            const maxCellWidth = Math.floor(surfaceWidth / totalCols) - 4;
+            const maxCellHeight = Math.floor(surfaceHeight / totalRows) - 4;
+
+            // Κρατάμε το μικρότερο για να παραμείνουν τέλεια τετράγωνα και να χωράνε και στους δύο άξονες
+            const cellSize = Math.min(maxCellWidth, maxCellHeight, 65); // max 65px για να μην παραμεγαλώσει σε τεράστιες οθόνες
+
+            container.style.gridTemplateColumns = `repeat(${totalCols}, ${cellSize}px)`;
+            container.style.gridTemplateRows = `repeat(${totalRows}, ${cellSize}px)`;
             container.innerHTML = ''; 
 
             for (let r = 0; r < totalRows; r++) {
@@ -251,11 +257,18 @@
                     const slot = document.createElement('div');
                     slot.classList.add('grid-slot');
                     slot.id = slotId;
+                    
+                    // Αν υπάρχει ήδη κατάσταση για αυτό το slot (π.χ. από προηγούμενο turn ή συγχρονισμό), ξαναβάλε την εικόνα
+                    if (gridState[slotId]) {
+                        slot.innerHTML = `<img src="${getTileImagePath(gridState[slotId])}" class="tile-img" alt="${gridState[slotId]}">`;
+                        if (validatedSlots.has(slotId)) {
+                            slot.classList.add('validated');
+                        }
+                    }
+
                     container.appendChild(slot);
-                    gridState[slotId] = null;
 
                     slot.addEventListener('click', () => {
-                        // ΕΛΕΓΧΟΣ: Μπορείς να πατήσεις ΜΟΝΟ αν είναι η σειρά σου
                         if (isGameOver || validatedSlots.has(slot.id) || currentPlayer !== myPlayerNumber) return;
 
                         if (selectedRackTile) {
@@ -295,7 +308,6 @@
 
         // --- ΔΙΚΤΥΑΚΑ EVENTS (SOCKET.IO) ---
 
-        // 3. Μάθε ποιος παίκτης είσαι
         socket.on('playerAssignment', (data) => {
             myPlayerNumber = data.playerNumber;
             if (myPlayerNumber === null) {
@@ -305,24 +317,25 @@
             }
         });
 
-        // 4. Έναρξη Παιχνιδιού από τον Server
         socket.on('startGame', (data) => {
             preloadImages();
-            buildFullScreenGrid();
-
-            // Ανάθεση της σωστής κασετίνας
-            myRack = (myPlayerNumber === 1) ? data.p1Tiles : data.p2Tiles;
             
-            // Εμφάνιση αρχικού πλακιδίου
-            const startSlotId = `slot_r0_c0`;
-            gridState[startSlotId] = data.startingTile;
-            validatedSlots.add(startSlotId);
-            const startSlotEl = document.getElementById(startSlotId);
-            if(startSlotEl) {
-                startSlotEl.innerHTML = `<img src="${getTileImagePath(data.startingTile)}" class="tile-img" alt="${data.startingTile}">`;
-                startSlotEl.classList.add('validated');
+            // Αρχικοποίηση του gridState για τις σταθερές διαστάσεις
+            for (let r = 0; r < totalRows; r++) {
+                for (let c = 0; c < totalCols; c++) {
+                    gridState[`slot_r${r}_c${c}`] = null;
+                }
             }
 
+            // Τοποθέτηση αρχικού πλακιδίου ακριβώς στη μέση του πλέγματος (σειρά 5, στήλη 7)
+            const startSlotId = `slot_r5_c7`;
+            gridState[startSlotId] = data.startingTile;
+            validatedSlots.add(startSlotId);
+
+            buildFullScreenGrid();
+
+            myRack = (myPlayerNumber === 1) ? data.p1Tiles : data.p2Tiles;
+            
             poolText.innerText = `Κασετίνα: ${data.poolCount}`;
             currentPlayer = 1;
             updateTurnUI();
@@ -330,9 +343,7 @@
             startTurnTimer();
         });
 
-        // 5. Λήψη live ενημέρωσης όταν ο ΑΛΛΟΣ παίκτης έκανε σωστή πράξη
         socket.on('updateBoard', (data) => {
-            // Συγχρονισμός του ταμπλό
             Object.keys(data.gridState).forEach(id => {
                 gridState[id] = data.gridState[id];
                 const slotEl = document.getElementById(id);
@@ -348,15 +359,13 @@
             });
         });
 
-        // 6. Λήψη αλλαγής σειράς
         socket.on('newTurn', (data) => {
             currentPlayer = data.currentPlayer;
-            poolText.innerText = `Κασετίνα: ${data.poolCount}`;
+            poolText.innerText = `Κασετίna: ${data.poolCount}`;
             updateTurnUI();
             startTurnTimer();
         });
 
-        // 7. Λήψη νέου πλακιδίου αν δεν παίξαμε
         socket.on('drawTile', (data) => {
             myRack.push(data.tile);
             renderRack();
@@ -414,7 +423,9 @@
             toProcess.forEach(id => {
                 let val = gridState[id];
                 if (['+', '-', 'x', '='].includes(val)) {
-                    document.getElementById(id).innerHTML = ''; gridState[id] = null;
+                    const el = document.getElementById(id);
+                    if(el) el.innerHTML = ''; 
+                    gridState[id] = null;
                 } else { returnTileToRack(id); }
             });
             temporaryPlacements = [];
@@ -462,7 +473,8 @@
             const val = gridState[slotId]; if (!val) return;
             if (!['+', '-', 'x', '='].includes(val)) { myRack.push(val); }
             const slotEl = document.getElementById(slotId);
-            slotEl.innerHTML = ''; gridState[slotId] = null;
+            if(slotEl) slotEl.innerHTML = ''; 
+            gridState[slotId] = null;
             temporaryPlacements = temporaryPlacements.filter(id => id !== slotId);
             renderRack();
         }
@@ -576,14 +588,13 @@
                 }
             }
 
-            // 8. Η ΠΡΑΞΗ ΕΙΝΑΙ ΣΩΣΤΗ: Ενημερώνουμε το δικό μας UI
             temporaryPlacements.forEach(id => {
                 validatedSlots.add(id); 
-                document.getElementById(id).classList.add('validated');
+                const el = document.getElementById(id);
+                if(el) el.classList.add('validated');
             });
             mainLineSegments.forEach(seg => validatedSlots.add(`slot_r${seg.r}_c${seg.c}`));
 
-            // 9. ΣΤΕΛΝΟΥΜΕ ΤΗΝ ΚΙΝΗΣΗ ΣΤΟΝ SERVER για να τη δείξει live στον άλλον παίκτη!
             socket.emit('submitMove', {
                 temporaryPlacements: temporaryPlacements,
                 updatedGridState: gridState
@@ -613,11 +624,13 @@
         });
 
         function sendEndTurnToServer() {
-            // Στέλνουμε σήμα στον server ότι τελειώσαμε τη σειρά μας
             socket.emit('endTurn', {
                 hasValidated: hasValidatedAtLeastOnceThisTurn
             });
         }
+
+        // 🎯 Ακρόαση για αλλαγή μεγέθους παραθύρου ώστε το πλέγμα να προσαρμόζεται live
+        window.addEventListener('resize', buildFullScreenGrid);
     </script>
 </body>
 </html>
