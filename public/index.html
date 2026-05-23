@@ -27,25 +27,40 @@
         .pool-counter { color: #888; font-size: 12px; font-weight: bold; margin-left: 15px; }
         .role-indicator { color: #00ffcc; font-size: 14px; font-weight: bold; margin-left: 15px; }
 
-        /* Επιφάνεια Παιχνιδιού */
+        /* Επιφάνεια Παιχνιδιού (Wrapper για το Scaling) */
         .app-game-surface {
             position: absolute; top: 45px; bottom: 120px; left: 0; right: 0;
             background: #1a1a1a; 
             overflow: hidden; 
-            padding: 10px;
             display: flex; align-items: center; justify-content: center;
+        }
+        
+        /* 
+           Το εικονικό ταμπλό παιχνιδιού. 
+           Έχει σταθερές μεγάλες διαστάσεις και θα γίνει scale (σμίκρυνση) 
+           δυναμικά από τη JavaScript για να χωράει σε κάθε οθόνη.
+        */
+        .virtual-board {
+            width: 1400px;
+            height: 900px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center center; /* Το scaling γίνεται από το κέντρο */
+            flex-shrink: 0;
         }
         
         .grid-relative-container {
             display: grid;
-            gap: 4px;
-            /* Οι διαστάσεις στηλών και γραμμών ορίζονται πλέον δυναμικά από τη JS */
+            gap: 5px;
+            grid-template-columns: repeat(19, 68px); /* 19 στήλες x 68px */
+            grid-template-rows: repeat(12, 68px);    /* 12 σειρές x 68px */
             justify-content: center;
             align-content: center;
         }
 
         .grid-slot {
-            width: 100%; height: 100%;
+            width: 68px; height: 68px;
             display: flex; align-items: center; justify-content: center;
             background-color: #181818;
             border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -168,7 +183,10 @@
     </div>
     
     <div class="app-game-surface" id="surface-container">
-        <div class="grid-relative-container" id="game-container"></div>
+        <!-- Το virtual-board κρατάει σταθερό μέγεθος και γίνεται scale αυτόματα -->
+        <div class="virtual-board" id="virtual-board">
+            <div class="grid-relative-container" id="game-container"></div>
+        </div>
     </div>
 
     <div class="player-rack-container">
@@ -196,6 +214,7 @@
 
         const container = document.getElementById('game-container');
         const surfaceContainer = document.getElementById('surface-container');
+        const virtualBoard = document.getElementById('virtual-board');
         const rackNumsEl = document.getElementById('rack-nums');
         const turnText = document.getElementById('turn-text');
         const roleText = document.getElementById('role-text');
@@ -209,11 +228,11 @@
         const gameOverTitle = document.getElementById('game-over-title');
         const gameOverMsg = document.getElementById('game-over-msg');
 
-        let myPlayerNumber = null; // 1 ή 2 (ποιος είμαι εγώ)
-        let currentPlayer = 1;     // Ποιανού σειρά είναι παγκόσμια
+        let myPlayerNumber = null; // 1 ή 2
+        let currentPlayer = 1;     
         let isGameOver = false;
         
-        let myRack = []; // Μόνο τα πλακίδια του παρόντος υπολογιστή
+        let myRack = []; 
         
         const gridState = {}; 
         const validatedSlots = new Set();
@@ -224,9 +243,9 @@
         let timeLeft = 60;
         let hasValidatedAtLeastOnceThisTurn = false; 
 
-        // Σταθερό μέγεθος πλέγματος για να μην αλλάζει ο αριθμός των τετραγώνων μεταξύ των παικτών
-        const totalRows = 11;
-        const totalCols = 15;
+        // Επιστροφή στις αρχικές μεγάλες διαστάσεις σου για άνετο παιχνίδι
+        const totalRows = 12;
+        const totalCols = 19;
         const symbolCycle = ['+', '-', 'x', '=', null];
 
         function preloadImages() {
@@ -235,20 +254,27 @@
             imagesToPreload.forEach(src => { const img = new Image(); img.src = src; });
         }
 
-        // Δυναμικός υπολογισμός μεγέθους ώστε να χωράει ΠΑΝΤΑ ολόκληρο το πλέγμα στην οθόνη
+        // 🛠️ Η ΜΑΓΙΚΗ ΣΥΝΑΡΤΗΣΗ SCALING
+        function applyDynamicScaling() {
+            const windowWidth = surfaceContainer.clientWidth;
+            const windowHeight = surfaceContainer.clientHeight;
+
+            // Διαστάσεις του εικονικού ταμπλό (virtual board)
+            const boardWidth = 1400;
+            const boardHeight = 900;
+
+            // Υπολογισμός του scale factor για πλάτος και ύψος
+            const scaleX = windowWidth / boardWidth;
+            const scaleY = windowHeight / boardHeight;
+
+            // Κρατάμε το μικρότερο scale για να μην παραμορφωθεί το παιχνίδι
+            const finalScale = Math.min(scaleX, scaleY);
+
+            // Εφαρμογή του scale με CSS transform
+            virtualBoard.style.transform = `scale(${finalScale})`;
+        }
+
         function buildFullScreenGrid() {
-            const surfaceWidth = surfaceContainer.clientWidth - 20; 
-            const surfaceHeight = surfaceContainer.clientHeight - 20;
-
-            // Υπολογίζουμε πόσα pixel μπορεί να είναι το κάθε τετράγωνο για να χωράει οριζόντια και κάθετα
-            const maxCellWidth = Math.floor(surfaceWidth / totalCols) - 4;
-            const maxCellHeight = Math.floor(surfaceHeight / totalRows) - 4;
-
-            // Κρατάμε το μικρότερο για να παραμείνουν τέλεια τετράγωνα και να χωράνε και στους δύο άξονες
-            const cellSize = Math.min(maxCellWidth, maxCellHeight, 65); // max 65px για να μην παραμεγαλώσει σε τεράστιες οθόνες
-
-            container.style.gridTemplateColumns = `repeat(${totalCols}, ${cellSize}px)`;
-            container.style.gridTemplateRows = `repeat(${totalRows}, ${cellSize}px)`;
             container.innerHTML = ''; 
 
             for (let r = 0; r < totalRows; r++) {
@@ -258,7 +284,6 @@
                     slot.classList.add('grid-slot');
                     slot.id = slotId;
                     
-                    // Αν υπάρχει ήδη κατάσταση για αυτό το slot (π.χ. από προηγούμενο turn ή συγχρονισμό), ξαναβάλε την εικόνα
                     if (gridState[slotId]) {
                         slot.innerHTML = `<img src="${getTileImagePath(gridState[slotId])}" class="tile-img" alt="${gridState[slotId]}">`;
                         if (validatedSlots.has(slotId)) {
@@ -302,6 +327,8 @@
                     });
                 }
             }
+            // Εκτέλεση του scaling αμέσως μετά το χτίσιμο
+            applyDynamicScaling();
         }
 
         function getTileImagePath(val) { return `photos/${val}.png`; }
@@ -320,15 +347,14 @@
         socket.on('startGame', (data) => {
             preloadImages();
             
-            // Αρχικοποίηση του gridState για τις σταθερές διαστάσεις
             for (let r = 0; r < totalRows; r++) {
                 for (let c = 0; c < totalCols; c++) {
                     gridState[`slot_r${r}_c${c}`] = null;
                 }
             }
 
-            // Τοποθέτηση αρχικού πλακιδίου ακριβώς στη μέση του πλέγματος (σειρά 5, στήλη 7)
-            const startSlotId = `slot_r5_c7`;
+            // Τοποθέτηση αρχικού πλακιδίου ακριβώς στο κέντρο (Σειρά 6, Στήλη 9)
+            const startSlotId = `slot_r6_c9`;
             gridState[startSlotId] = data.startingTile;
             validatedSlots.add(startSlotId);
 
@@ -361,7 +387,7 @@
 
         socket.on('newTurn', (data) => {
             currentPlayer = data.currentPlayer;
-            poolText.innerText = `Κασετίna: ${data.poolCount}`;
+            poolText.innerText = `Κασετίνα: ${data.poolCount}`;
             updateTurnUI();
             startTurnTimer();
         });
@@ -629,8 +655,8 @@
             });
         }
 
-        // 🎯 Ακρόαση για αλλαγή μεγέθους παραθύρου ώστε το πλέγμα να προσαρμόζεται live
-        window.addEventListener('resize', buildFullScreenGrid);
+        // 🎯 Ακρόαση για αλλαγή μεγέθους παραθύρου ώστε να εκτελείται το CSS Scaling live
+        window.addEventListener('resize', applyDynamicScaling);
     </script>
 </body>
 </html>
