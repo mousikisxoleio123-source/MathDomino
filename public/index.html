@@ -255,25 +255,26 @@
         }
 
         // 🛠️ Η ΜΑΓΙΚΗ ΣΥΝΑΡΤΗΣΗ SCALING
+        // 🛠️ Η ΜΑΓΙΚΗ ΣΥΝΑΡΤΗΣΗ SCALING
         function applyDynamicScaling() {
-            const windowWidth = surfaceContainer.clientWidth;
-            const windowHeight = surfaceContainer.clientHeight;
+    const margin = 20;
+    const windowWidth = surfaceContainer.clientWidth - margin;
+    const windowHeight = surfaceContainer.clientHeight - margin;
 
-            // Διαστάσεις του εικονικού ταμπλό (virtual board)
-            const boardWidth = 1400;
-            const boardHeight = 900;
+    const boardWidth = 1400;
+    const boardHeight = 900;
 
-            // Υπολογισμός του scale factor για πλάτος και ύψος
-            const scaleX = windowWidth / boardWidth;
-            const scaleY = windowHeight / boardHeight;
+    const scaleX = windowWidth / boardWidth;
+    const scaleY = windowHeight / boardHeight;
+    
+    let finalScale = Math.min(scaleX, scaleY);
 
-            // Κρατάμε το μικρότερο scale για να μην παραμορφωθεί το παιχνίδι
-            const finalScale = Math.min(scaleX, scaleY);
+    // Προαιρετικό: Μην αφήσεις το ταμπλό να γίνει μικρότερο από το 40% του μεγέθους του
+    // για να διατηρείται η αναγνωσιμότητα
+    finalScale = Math.max(finalScale, 0.4); 
 
-            // Εφαρμογή του scale με CSS transform
-            virtualBoard.style.transform = `scale(${finalScale})`;
-        }
-
+    virtualBoard.style.transform = `scale(${finalScale})`;
+}
         function buildFullScreenGrid() {
             container.innerHTML = ''; 
 
