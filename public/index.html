@@ -40,24 +40,26 @@
            Έχει σταθερές μεγάλες διαστάσεις και θα γίνει scale (σμίκρυνση) 
            δυναμικά από τη JavaScript για να χωράει σε κάθε οθόνη.
         */
-        .virtual-board {
-            width: 1400px;
-            height: 900px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transform-origin: center center; /* Το scaling γίνεται από το κέντρο */
-            flex-shrink: 0;
-        }
+.virtual-board {
+    width: 1400px;
+    height: 900px;
+    display: flex;
+    /* Άλλαξε αυτά */
+    align-items: flex-start; 
+    justify-content: flex-start;
+    transform-origin: top left; /* Καλύτερα να ξεκινάει από πάνω αριστερά το scale */
+    flex-shrink: 0;
+}
         
-        .grid-relative-container {
-            display: grid;
-            gap: 5px;
-            grid-template-columns: repeat(19, 68px); /* 19 στήλες x 68px */
-            grid-template-rows: repeat(12, 68px);    /* 12 σειρές x 68px */
-            justify-content: center;
-            align-content: center;
-        }
+.grid-relative-container {
+    display: grid;
+    gap: 5px;
+    grid-template-columns: repeat(19, 68px);
+    grid-template-rows: repeat(12, 68px);
+    /* Άλλαξε τα παρακάτω σε 'start' */
+    justify-content: start; 
+    align-content: start;
+}
 
         .grid-slot {
             width: 68px; height: 68px;
@@ -345,30 +347,27 @@
             }
         });
 
-        socket.on('startGame', (data) => {
-            preloadImages();
-            
-            for (let r = 0; r < totalRows; r++) {
-                for (let c = 0; c < totalCols; c++) {
-                    gridState[`slot_r${r}_c${c}`] = null;
-                }
-            }
+socket.on('startGame', (data) => {
+    preloadImages();
+    
+    // Καθάρισε το αντικείμενο ΠΡΙΝ βάλεις το νέο πλακίδιο
+    for (let key in gridState) delete gridState[key]; 
+    
+    // Γέμισε με null
+    for (let r = 0; r < totalRows; r++) {
+        for (let c = 0; c < totalCols; c++) {
+            gridState[`slot_r${r}_c${c}`] = null;
+        }
+    }
 
-            // Τοποθέτηση αρχικού πλακιδίου ακριβώς στο κέντρο (Σειρά 6, Στήλη 9)
-            const startSlotId = `slot_r6_c9`;
-            gridState[startSlotId] = data.startingTile;
-            validatedSlots.add(startSlotId);
-
-            buildFullScreenGrid();
-
-            myRack = (myPlayerNumber === 1) ? data.p1Tiles : data.p2Tiles;
-            
-            poolText.innerText = `Κασετίνα: ${data.poolCount}`;
-            currentPlayer = 1;
-            updateTurnUI();
-            renderRack();
-            startTurnTimer();
-        });
+    // Τώρα βάλε το αρχικό
+    const startSlotId = `slot_r6_c9`;
+    gridState[startSlotId] = data.startingTile;
+    
+    // ... τα υπόλοιπα
+    buildFullScreenGrid();
+    // ...
+});
 
         socket.on('updateBoard', (data) => {
             Object.keys(data.gridState).forEach(id => {
