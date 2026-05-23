@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathDomino - Full Screen Grid</title>
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: Arial, sans-serif;
+            background-color: #121212; user-select: none;
+        }
+
+        /* Πάνω Μπάρα Πληροφοριών */
+        .control-panel {
+            position: fixed; top: 0; left: 0; width: 100%; height: 45px;
+            background-color: #222222; border-bottom: 2px solid #ffd700;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 20px; z-index: 1000;
+        }
+
+        .panel-left { display: flex; align-items: center; }
+        .turn-indicator { color: #ffd700; font-size: 15px; font-weight: bold; }
+        .pool-counter { color: #888; font-size: 12px; font-weight: bold; margin-left: 15px; }
+
+        /* Επιφάνεια Παιχνιδιού - Γεμίζει όλο τον διαθέσιμο χώρο */
+        .app-game-surface {
+            position: absolute; top: 45px; bottom: 120px; left: 0; right: 0;
+            background: #1a1a1a; 
+            overflow: hidden; 
+            padding: 5px;
+            display: flex; align-items: flex-start; justify-content: flex-start;
+        }
+        
+        /* Το πλέγμα απλώνεται σε όλο το container */
+        .grid-relative-container {
+            display: grid;
+            gap: 4px;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Οι θέσεις είναι ΜΕΓΑΛΕΣ και σταθερές (65px) - ΠΑΡΕΜΕΙΝΑΝ ΩΣ ΕΧΟΥΝ */
+        .grid-slot {
+            width: 65px; height: 65px;
+            display: flex; align-items: center; justify-content: center;
+            background-color: #181818;
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 6px; 
+            cursor: pointer;
+            padding: 2px;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        
+        .grid-slot:hover {
+            border-color: #ffd700;
+            background-color: #222;
+        }
+        
+        .grid-slot.validated {
+            border: none;
+            background-color: transparent;
+        }
+
+        /* Κάτω Μπάρα (Rack) - Αυξήθηκε ελαφρώς το ύψος για να χωράει τα μεγαλύτερα πλακίδια */
+        .player-rack-container {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 120px;
+            background-color: #222222; border-top: 2px solid #ffd700;
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 20px; z-index: 1000;
+        }
+        
+        .rack-left-space {
+            display: flex; align-items: center; flex: 1; min-width: 140px;
+        }
+        .rack-label { color: #aaa; font-size: 13px; font-weight: bold; white-space: nowrap; }
+        
+        .rack-center-section {
+            display: flex; align-items: center; gap: 8px; justify-content: center;
+            overflow-x: auto; flex: 2; padding: 0 10px;
+        }
+        
+        /* Μεγάλο Ρολόι στην κάτω μπάρα */
+        .timer-display { 
+            color: #ff3333; font-size: 34px; font-weight: bold; 
+            background: #000; padding: 4px 18px; border-radius: 6px;
+            border: 2px solid #ff3333; font-family: monospace;
+            margin: 0 20px; flex-shrink: 0;
+            letter-spacing: 1px;
+            box-shadow: 0 0 10px rgba(255, 51, 51, 0.2);
+        }
+        
+        .rack-btn-group {
+            display: flex; gap: 12px; align-items: center; justify-content: flex-end;
+            flex: 1; min-width: 320px;
+        }
+
+        .action-img-btn {
+            width: 140px; height: 65px;
+            background-color: transparent; border: none;
+            padding: 0; cursor: pointer; transition: transform 0.1s; flex-shrink: 0;
+        }
+        .action-img-btn:active { transform: scale(0.96); }
+        
+        /* ΜΕΓΑΛΩΣΑΝ ΤΑ ΠΛΑΚΙΔΙΑ ΤΗΣ ΚΑΣΕΤΙΝΑΣ (Από 55px σε 75px) */
+        .rack-tile {
+            width: 75px; height: 75px; 
+            display: flex; align-items: center; justify-content: center; 
+            cursor: pointer; padding: 0; background-color: transparent; border: none;
+            transition: transform 0.1s; flex-shrink: 0;
+        }
+        .rack-tile:active { transform: scale(0.95); }
+        
+        .rack-tile.selected img { 
+            outline: 3px solid #00ffcc;
+            box-shadow: 0 0 12px #00ffcc; 
+        }
+
+        .tile-img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+
+        #message-box {
+            position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+            background-color: #dc3545; color: white; padding: 8px 18px;
+            border-radius: 6px; font-size: 14px; font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 3000; display: none;
+        }
+
+        .game-over-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; z-index: 5000; display: none;
+        }
+        .game-over-box {
+            background-color: #222; border: 3px solid #ffd700; padding: 25px; border-radius: 12px; text-align: center;
+        }
+        .game-over-title { color: #ffd700; font-size: 26px; font-weight: bold; margin-bottom: 12px; }
+        .game-over-msg { color: #fff; font-size: 15px; margin-bottom: 18px; }
+        
+        .restart-btn {
+            background-color: #28a745; border: none; color: white; padding: 8px 16px;
+            font-size: 13px; font-weight: bold; border-radius: 4px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <div class="panel-left">
+            <span class="turn-indicator" id="turn-text">Σειρά σου: Παίκτης 1</span>
+            <span class="pool-counter" id="pool-text">Κασετίνα: 60</span>
+        </div>
+    </div>
+
+    <div id="message-box"></div>
+    
+    <div id="game-over-screen" class="game-over-overlay">
+        <div class="game-over-box">
+            <div class="game-over-title" id="game-over-title">MathDomino - Τέλος Παιχνιδιού!</div>
+            <div class="game-over-msg" id="game-over-msg">Ο νικητής θα εμφανιστεί εδώ.</div>
+            <button class="restart-btn" onclick="window.location.reload()">Παίξε Ξανά 🔄</button>
+        </div>
+    </div>
+    
+    <div class="app-game-surface" id="surface-container">
+        <div class="grid-relative-container" id="game-container"></div>
+    </div>
+
+    <div class="player-rack-container">
+        <div class="rack-left-space">
+            <div class="rack-label" id="rack-user-label">Πλακίδια Παίκτη 1:</div>
+        </div>
+        
+        <div class="rack-center-section" id="rack-nums"></div>
+        
+        <!-- Το ρολόι ανάμεσα στα πλακίδια και στα κουμπιά ελέγχου -->
+        <div class="timer-display" id="timer-text">01:00</div>
+        
+        <div class="rack-btn-group">
+            <button class="action-img-btn" id="btn-ok" title="Ολοκλήρωση Προσπάθειας (OK)">
+                <img src="photos/ok.png" class="tile-img" alt="OK">
+            </button>
+            <button class="action-img-btn" id="btn-check" title="Επικύρωση Πράξης">
+                <img src="photos/elehxos.png" class="tile-img" alt="Έλεγχος">
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const container = document.getElementById('game-container');
+        const surfaceContainer = document.getElementById('surface-container');
+        const rackNumsEl = document.getElementById('rack-nums');
+        const turnText = document.getElementById('turn-text');
+        const rackLabel = document.getElementById('rack-user-label');
+        const poolText = document.getElementById('pool-text');
+        const timerText = document.getElementById('timer-text');
+        const msgBox = document.getElementById('message-box');
+        const checkBtn = document.getElementById('btn-check');
+        const okBtn = document.getElementById('btn-ok');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const gameOverTitle = document.getElementById('game-over-title');
+        const gameOverMsg = document.getElementById('game-over-msg');
+
+        let currentPlayer = 1; 
+        let isGameOver = false;
+        
+        let numberPool = [];
+        let player1Rack = { nums: [] };
+        let player2Rack = { nums: [] };
+        
+        const gridState = {}; const validatedSlots = new Set();
+        let temporaryPlacements = []; 
+        let selectedRackTile = null;
+
+        let timerInterval = null;
+        let timeLeft = 60;
+        let hasValidatedAtLeastOnceThisTurn = false; 
+
+        let totalRows = 0;
+        let totalCols = 0;
+        const symbolCycle = ['+', '-', 'x', '=', null];
+
+        function buildFullScreenGrid() {
+            const surfaceWidth = surfaceContainer.clientWidth - 10; 
+            const surfaceHeight = surfaceContainer.clientHeight - 10;
+
+            totalCols = Math.floor(surfaceWidth / 69);
+            totalRows = Math.floor(surfaceHeight / 69);
+
+            if(totalCols < 5) totalCols = 5;
+            if(totalRows < 5) totalRows = 5;
+
+            container.style.gridTemplateColumns = `repeat(${totalCols}, 65px)`;
+            container.style.gridTemplateRows = `repeat(${totalRows}, 65px)`;
+
+            container.innerHTML = ''; 
+
+            for (let r = 0; r < totalRows; r++) {
+                for (let c = 0; c < totalCols; c++) {
+                    const slotId = `slot_r${r}_c${c}`;
+                    const slot = document.createElement('div');
+                    slot.classList.add('grid-slot');
+                    slot.id = slotId;
+                    
+                    container.appendChild(slot);
+                    gridState[slotId] = null;
+
+                    slot.addEventListener('click', () => {
+                        if (isGameOver || validatedSlots.has(slot.id)) return;
+
+                        if (selectedRackTile) {
+                            if (gridState[slot.id] && !['+', '-', 'x', '='].includes(gridState[slot.id])) {
+                                returnTileToRack(slot.id);
+                            }
+                            placeTileOnGrid(slot, selectedRackTile.val);
+                            removeTileFromRackData(selectedRackTile.val);
+                            selectedRackTile = null;
+                            renderRack();
+                        } 
+                        else {
+                            let currentVal = gridState[slot.id];
+                            if (currentVal && !['+', '-', 'x', '='].includes(currentVal)) {
+                                returnTileToRack(slot.id);
+                                currentVal = null;
+                            }
+
+                            let nextIndex = 0;
+                            if (currentVal !== null) {
+                                nextIndex = (symbolCycle.indexOf(currentVal) + 1) % symbolCycle.length;
+                            }
+                            
+                            let nextVal = symbolCycle[nextIndex];
+                            if (nextVal === null) {
+                                slot.innerHTML = '';
+                                gridState[slot.id] = null;
+                                temporaryPlacements = temporaryPlacements.filter(id => id !== slot.id);
+                            } else {
+                                gridState[slot.id] = nextVal;
+                                if (!temporaryPlacements.includes(slot.id)) {
+                                    temporaryPlacements.push(slot.id);
+                                }
+                                slot.innerHTML = `<img src="${getTileImagePath(nextVal)}" class="tile-img" alt="${nextVal}">`;
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
+        function getTileImagePath(val) { return `photos/${val}.png`; }
+
+        function drawFromPool() {
+            if (numberPool.length === 0) return null;
+            const randomIndex = Math.floor(Math.random() * numberPool.length);
+            return numberPool.splice(randomIndex, 1)[0];
+        }
+
+        function updatePoolCounter() { poolText.innerText = `Κασετίνα: ${numberPool.length}`; }
+
+        function initPool() {
+            numberPool = [];
+            for (let n = 0; n <= 9; n++) {
+                for (let i = 0; i < 6; i++) { numberPool.push(n.toString()); }
+            }
+        }
+
+        function initGame() {
+            initPool();
+            buildFullScreenGrid();
+
+            for(let i=0; i<12; i++) {
+                let n1 = drawFromPool(); if(n1) player1Rack.nums.push(n1);
+                let n2 = drawFromPool(); if(n2) player2Rack.nums.push(n2);
+            }
+
+            const startSlotId = `slot_r0_c0`; 
+            const startingNum = drawFromPool();
+            
+            if (startingNum) {
+                gridState[startSlotId] = startingNum; 
+                validatedSlots.add(startSlotId);
+                const startSlotEl = document.getElementById(startSlotId);
+                startSlotEl.innerHTML = `<img src="${getTileImagePath(startingNum)}" class="tile-img" alt="${startingNum}">`;
+                startSlotEl.classList.add('validated');
+            }
+
+            updatePoolCounter();
+            renderRack();
+            startTurnTimer();
+        }
+
+        function startTurnTimer() {
+            clearInterval(timerInterval);
+            timeLeft = 60;
+            hasValidatedAtLeastOnceThisTurn = false;
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimeOut();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            let secs = timeLeft < 10 ? "0" + timeLeft : timeLeft;
+            timerText.innerText = `00:${secs}`;
+        }
+
+        function handleTimeOut() {
+            showMessage("⏱️ Ο χρόνος τελείωσε!", "#dc3545");
+            switchTurn();
+        }
+
+        function clearTemporaryPlacements() {
+            let toProcess = [...temporaryPlacements];
+            toProcess.forEach(id => {
+                let val = gridState[id];
+                if (['+', '-', 'x', '='].includes(val)) {
+                    document.getElementById(id).innerHTML = ''; gridState[id] = null;
+                } else { returnTileToRack(id); }
+            });
+            temporaryPlacements = [];
+            renderRack();
+        }
+
+        function renderRack() {
+            rackNumsEl.innerHTML = '';
+            let currentRack = (currentPlayer === 1) ? player1Rack.nums : player2Rack.nums;
+            let sortedNums = [...currentRack].sort((a, b) => parseInt(a) - parseInt(b));
+            sortedNums.forEach(n => createRackTileEl(n, rackNumsEl));
+            rackLabel.innerText = `Πλακίδια Παίκτη ${currentPlayer}:`;
+        }
+
+        function createRackTileEl(val, parentEl) {
+            const el = document.createElement('div');
+            el.classList.add('rack-tile');
+            const img = document.createElement('img');
+            img.src = getTileImagePath(val); img.classList.add('tile-img'); img.alt = val;
+            el.appendChild(img);
+            el.addEventListener('click', (e) => {
+                if (isGameOver) return;
+                e.stopPropagation();
+                document.querySelectorAll('.rack-tile').forEach(t => t.classList.remove('selected'));
+                if (selectedRackTile && selectedRackTile.el === el) {
+                    selectedRackTile = null;
+                } else {
+                    selectedRackTile = { val, el }; el.classList.add('selected');
+                }
+            });
+            parentEl.appendChild(el);
+        }
+
+        function removeTileFromRackData(val) {
+            let currentRack = (currentPlayer === 1) ? player1Rack.nums : player2Rack.nums;
+            const index = currentRack.indexOf(val);
+            if (index > -1) currentRack.splice(index, 1);
+        }
+
+        function placeTileOnGrid(slotEl, val) {
+            gridState[slotEl.id] = val;
+            if (!temporaryPlacements.includes(slotEl.id)) { temporaryPlacements.push(slotEl.id); }
+            slotEl.innerHTML = `<img src="${getTileImagePath(val)}" class="tile-img" alt="${val}">`;
+        }
+
+        function returnTileToRack(slotId) {
+            const val = gridState[slotId]; if (!val) return;
+            let currentRack = (currentPlayer === 1) ? player1Rack.nums : player2Rack.nums;
+            if (!['+', '-', 'x', '='].includes(val)) { currentRack.push(val); }
+            const slotEl = document.getElementById(slotId);
+            slotEl.innerHTML = ''; gridState[slotId] = null;
+            temporaryPlacements = temporaryPlacements.filter(id => id !== slotId);
+            renderRack();
+        }
+
+        function checkGameOver() {
+            if (player1Rack.nums.length === 0) {
+                clearInterval(timerInterval); isGameOver = true;
+                gameOverTitle.innerText = "🏆 Τέλος Παιχνιδιού!";
+                gameOverMsg.innerText = "Νικητής είναι ο Παίκτης 1!";
+                gameOverScreen.style.display = "flex"; return true;
+            }
+            if (player2Rack.nums.length === 0) {
+                clearInterval(timerInterval); isGameOver = true;
+                gameOverTitle.innerText = "🏆 Τέλος Παιχνιδιού!";
+                gameOverMsg.innerText = "Νικητής είναι ο Παίκτης 2!";
+                gameOverScreen.style.display = "flex"; return true;
+            }
+            return false;
+        }
+
+        function evaluateExpression(exprStr) {
+            if (!exprStr || exprStr.trim() === "") return null;
+            let rawTokens = exprStr.match(/(\d+|\+|-|x)/g);
+            if (!rawTokens || rawTokens.length === 0) return null;
+            
+            let tokens = []; let currentNumberStr = "";
+            for (let t of rawTokens) {
+                if (t === '+' || t === '-' || t === 'x') {
+                    if (currentNumberStr !== "") { tokens.push(currentNumberStr); currentNumberStr = ""; }
+                    tokens.push(t);
+                } else { currentNumberStr += t; }
+            }
+            if (currentNumberStr !== "") tokens.push(currentNumberStr);
+
+            if (tokens.length === 0) return null;
+
+            let i = 0;
+            while (i < tokens.length) {
+                if (tokens[i] === 'x') {
+                    let prevNum = parseInt(tokens[i-1]);
+                    let nextNum = parseInt(tokens[i+1]);
+                    if (isNaN(prevNum) || !tokens[i+1] || isNaN(nextNum)) return null;
+                    let product = prevNum * nextNum;
+                    tokens.splice(i-1, 3, product.toString());
+                    i--; 
+                } else {
+                    i++;
+                }
+            }
+
+            let result = parseInt(tokens[0]);
+            if (isNaN(result)) return null;
+
+            for(let j = 1; j < tokens.length; j += 2) {
+                let op = tokens[j]; let nextNum = parseInt(tokens[j+1]);
+                if (isNaN(nextNum)) return null;
+                if (op === '+') result += nextNum;
+                if (op === '-') result -= nextNum;
+            }
+            return result;
+        }
+
+        function parseAndValidateLine(segments) {
+            let fullStr = segments.map(s => s.val).join('');
+            if (!fullStr.includes('+') && !fullStr.includes('-') && !fullStr.includes('x')) return false;
+
+            let equalCount = (fullStr.match(/=/g) || []).length;
+            if (equalCount !== 1) return false; 
+
+            let subExpressions = fullStr.split('=');
+            let leftStr = subExpressions[0].trim(); let rightStr = subExpressions[1].trim();
+
+            if (leftStr === "" || rightStr === "") return false;
+
+            let leftVal = evaluateExpression(leftStr); let rightVal = evaluateExpression(rightStr);
+            if (leftVal === null || rightVal === null) return false;
+            return leftVal === rightVal;
+        }
+
+        function getCompleteLine(r, c, direction) {
+            let segments = [];
+            if (direction === 'H') {
+                let minC = c; while ((minC - 1) >= 0 && gridState[`slot_r${r}_c${minC - 1}`] !== null) { minC--; }
+                let maxC = c; while ((maxC + 1) < totalCols && gridState[`slot_r${r}_c${maxC + 1}`] !== null) { maxC++; }
+                for(let currC = minC; currC <= maxC; currC++) { segments.push({ r, c: currC, val: gridState[`slot_r${r}_c${currC}`] }); }
+            } else {
+                let minR = r; while ((minR - 1) >= 0 && gridState[`slot_r${minR - 1}_c${c}`] !== null) { minR--; }
+                let maxR = r; while ((maxR + 1) < totalRows && gridState[`slot_r${maxR + 1}_c${c}`] !== null) { maxR++; }
+                for(let currR = minR; currR <= maxR; currR++) { segments.push({ r: currR, c, val: gridState[`slot_r${currR}_c${c}`] }); }
+            }
+            return segments;
+        }
+
+        checkBtn.addEventListener('click', () => {
+            if (isGameOver || temporaryPlacements.length === 0) return;
+
+            let PlacedSlots = temporaryPlacements.map(id => {
+                let r = parseInt(id.split('_r')[1].split('_c')[0]);
+                let c = parseInt(id.split('_c')[1]);
+                return { id, r, c, val: gridState[id] };
+            });
+
+            let rowsSet = new Set(PlacedSlots.map(s => s.r));
+            let colsSet = new Set(PlacedSlots.map(s => s.c));
+            
+            let mainDirection = 'H';
+            if (rowsSet.size > 1 && colsSet.size === 1) { mainDirection = 'V'; } 
+            else if (rowsSet.size === 1 && colsSet.size > 1) { mainDirection = 'H'; }
+            else if (rowsSet.size > 1 && colsSet.size > 1) {
+                rejectPlacement("Τα πλακίδια πρέπει να είναι σε μία ευθεία σειρά!"); return;
+            }
+
+            let connected = temporaryPlacements.some(id => validatedSlots.has(id));
+            if (!connected && validatedSlots.size > 0) {
+                for (let slot of PlacedSlots) {
+                    let neighbors = [
+                        `slot_r${slot.r-1}_c${slot.c}`, `slot_r${slot.r+1}_c${slot.c}`,
+                        `slot_r${slot.r}_c${slot.c-1}`, `slot_r${slot.r}_c${slot.c+1}`
+                    ];
+                    if (neighbors.some(nId => validatedSlots.has(nId))) { connected = true; break; }
+                }
+            }
+            if (!connected && validatedSlots.size > 0) { 
+                rejectPlacement("Η νέα πράξη πρέπει να συνδέεται με το ταμπλό!"); return; 
+            }
+
+            let sample = PlacedSlots[0];
+            let mainLineSegments = getCompleteLine(sample.r, sample.c, mainDirection);
+            
+            if (!parseAndValidateLine(mainLineSegments)) {
+                rejectPlacement("Μη έγκυρη πράξη ή λάθος δομή!"); return;
+            }
+
+            let crossDirection = (mainDirection === 'H') ? 'V' : 'H';
+            for (let slot of PlacedSlots) {
+                let crossSegments = getCompleteLine(slot.r, slot.c, crossDirection);
+                if (crossSegments.length > 1) {
+                    if (!parseAndValidateLine(crossSegments)) {
+                        rejectPlacement("Μια διασταύρωση δεν σχηματίζει σωστή πράξη!"); return;
+                    }
+                }
+            }
+
+            temporaryPlacements.forEach(id => {
+                validatedSlots.add(id); 
+                document.getElementById(id).classList.add('validated');
+            });
+            
+            mainLineSegments.forEach(seg => validatedSlots.add(`slot_r${seg.r}_c${seg.c}`));
+
+            temporaryPlacements = [];
+            hasValidatedAtLeastOnceThisTurn = true; 
+            renderRack();
+            showMessage("Σωστή Πράξη!", "#28a745");
+            
+            checkGameOver();
+        });
+
+        function rejectPlacement(reason) {
+            showMessage(reason, "#dc3545");
+            clearTemporaryPlacements();
+        }
+
+        function showMessage(text, color) {
+            msgBox.innerText = text; msgBox.style.backgroundColor = color; msgBox.style.display = 'block';
+            setTimeout(() => { msgBox.style.display = 'none'; }, 2500);
+        }
+
+        okBtn.addEventListener('click', () => {
+            if (isGameOver) return;
+            switchTurn();
+        });
+
+        function switchTurn() {
+            clearInterval(timerInterval);
+            clearTemporaryPlacements(); 
+
+            if (!hasValidatedAtLeastOnceThisTurn) {
+                let newNum = drawFromPool();
+                let currentRack = (currentPlayer === 1) ? player1Rack.nums : player2Rack.nums;
+                if (newNum) {
+                    currentRack.push(newNum);
+                    updatePoolCounter();
+                    showMessage(`⚠️ Παίκτη ${currentPlayer} δεν έπαιξες πράξη! Πήρες 1 πλακίδιο.`, "#f0ad4e");
+                }
+            }
+
+            if (checkGameOver()) return;
+
+            currentPlayer = (currentPlayer === 1) ? 2 : 1;
+            turnText.innerText = `Σειρά σου: Παίκτης ${currentPlayer}`;
+            
+            renderRack();
+            startTurnTimer();
+        }
+
+        initGame();
+        
+        window.addEventListener('resize', () => {
+            if(validatedSlots.size === 1 && temporaryPlacements.length === 0) {
+                buildFullScreenGrid();
+                initGame();
+            }
+        });
+    </script>
+</body>
+</html>
